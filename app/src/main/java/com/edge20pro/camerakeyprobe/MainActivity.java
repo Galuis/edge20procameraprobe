@@ -29,40 +29,110 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Version 3: focuses on the vendor-tag resolution path actually exposed by
+ * the Motorola Edge 20 Pro framework.
+ *
+ * NOTE: this file is intentionally versioned for Library tracking. Because
+ * the Activity class is public and named MainActivity, copy it to the project
+ * as MainActivity.java when replacing the app source file.
+ */
 public class MainActivity extends Activity {
 
-    private static final long NO_TAG = Long.MIN_VALUE;
+    private static final String NATIVE_KEY_CLASS =
+            "android.hardware.camera2.impl.CameraMetadataNative$Key";
 
-    /**
-     * Names and types come from the previously collected Edge 20 Pro
-     * vendor-tag/HAL dump. Expected tags are included only where the
-     * earlier dump established them.
-     */
+    private static final String NATIVE_CLASS =
+            "android.hardware.camera2.impl.CameraMetadataNative";
+
     private static final Candidate[] CANDIDATES = new Candidate[] {
-            new Candidate("com.lenovo.moto.control.wnr_idx", Byte.class, null),
-            new Candidate("com.lenovo.moto.control.wnr_type", Byte.class, null),
+            /* Known public vendor key: control test. */
+            new Candidate(
+                    "com.lenovo.moto.clientapp.is_motcamera2",
+                    Byte.class,
+                    0x809a0000
+            ),
 
-            new Candidate("com.lenovo.moto.control.mfnr_number_of_frames", Byte.class, 0x809b0008),
-            new Candidate("com.lenovo.moto.control.mfnr_anchor_selection_mode", Byte.class, 0x809b0009),
-            new Candidate("com.lenovo.moto.control.mfnr_anchor_selection_algo", Byte.class, 0x809b000a),
-            new Candidate("com.lenovo.moto.envinfo.isMfnrEnabled", Byte.class, 0x809c0006),
+            new Candidate(
+                    "com.lenovo.moto.control.mfnr_number_of_frames",
+                    Byte.class,
+                    0x809b0008
+            ),
+            new Candidate(
+                    "com.lenovo.moto.control.mfnr_anchor_selection_mode",
+                    Byte.class,
+                    0x809b0009
+            ),
+            new Candidate(
+                    "com.lenovo.moto.control.mfnr_anchor_selection_algo",
+                    Byte.class,
+                    0x809b000a
+            ),
+            new Candidate(
+                    "com.lenovo.moto.envinfo.isMfnrEnabled",
+                    Byte.class,
+                    0x809c0006
+            ),
 
-            new Candidate("org.codeaurora.qcamera3.temporal_denoise.enable", Byte.class, 0x80230000),
-            new Candidate("org.codeaurora.qcamera3.temporal_denoise.process_type", Integer.class, 0x80230001),
+            new Candidate(
+                    "org.codeaurora.qcamera3.temporal_denoise.enable",
+                    Byte.class,
+                    0x80230000
+            ),
+            new Candidate(
+                    "org.codeaurora.qcamera3.temporal_denoise.process_type",
+                    Integer.class,
+                    0x80230001
+            ),
 
-            new Candidate("com.lenovo.moto.adrc.enable", Byte.class, 0x80a00000),
-            new Candidate("com.lenovo.moto.adrc.gain", Float.class, 0x80a00001),
+            new Candidate(
+                    "com.lenovo.moto.adrc.enable",
+                    Byte.class,
+                    0x80a00000
+            ),
+            new Candidate(
+                    "com.lenovo.moto.adrc.gain",
+                    Float.class,
+                    0x80a00001
+            ),
 
-            new Candidate("com.lenovo.moto.control.hdrplus", Byte.class, 0x809b0006),
+            new Candidate(
+                    "com.lenovo.moto.control.hdrplus",
+                    Byte.class,
+                    0x809b0006
+            ),
+            new Candidate(
+                    "org.quic.camera.CustomNoiseReduction",
+                    Byte.class,
+                    0x803c0000
+            ),
 
-            new Candidate("org.quic.camera.CustomNoiseReduction", Byte.class, 0x803c0000),
+            new Candidate(
+                    "OEMIFEIQSetting",
+                    Byte.class,
+                    0x80100000
+            ),
+            new Candidate(
+                    "OEMBPSIQSetting",
+                    Byte.class,
+                    0x80100001
+            ),
+            new Candidate(
+                    "OEMIPEIQSetting",
+                    Byte.class,
+                    0x80100002
+            ),
 
-            new Candidate("OEMIFEIQSetting", Byte.class, 0x80100000),
-            new Candidate("OEMBPSIQSetting", Byte.class, 0x80100001),
-            new Candidate("OEMIPEIQSetting", Byte.class, 0x80100002),
-
-            new Candidate("MFNRTotalNumFrames", Integer.class, 0x80150000),
-            new Candidate("MFNRBlendFrameNum", Integer.class, 0x80150001)
+            new Candidate(
+                    "MFNRTotalNumFrames",
+                    Integer.class,
+                    0x80150000
+            ),
+            new Candidate(
+                    "MFNRBlendFrameNum",
+                    Integer.class,
+                    0x80150001
+            )
     };
 
     private TextView statusText;
@@ -87,10 +157,11 @@ public class MainActivity extends Activity {
     }
 
     private void runProbe() {
-        statusText.setText("Running vendor registry probe...");
+        statusText.setText("Running vendor cache/tag probe...");
 
         new Thread(() -> {
             String report;
+
             try {
                 report = buildReport();
             } catch (Throwable t) {
@@ -116,11 +187,14 @@ public class MainActivity extends Activity {
             }
 
             final String finalReport = report;
+
             runOnUiThread(() -> {
                 outputText.setText(finalReport);
-                statusText.setText(reportFile != null
-                        ? "Done: " + reportFile.getAbsolutePath()
-                        : "Probe finished; report save failed");
+                statusText.setText(
+                        reportFile != null
+                                ? "Done: " + reportFile.getAbsolutePath()
+                                : "Probe finished; report save failed"
+                );
             });
         }).start();
     }
@@ -128,7 +202,7 @@ public class MainActivity extends Activity {
     private String buildReport() throws Exception {
         StringBuilder sb = new StringBuilder(128 * 1024);
 
-        sb.append("Edge20Pro Camera2 Vendor Registry Probe\n");
+        sb.append("Edge20Pro Camera2 Vendor Cache/Tag Probe\n");
         sb.append("Generated: ").append(new Date()).append('\n');
         sb.append("SDK: ").append(Build.VERSION.SDK_INT).append('\n');
         sb.append("Model: ").append(Build.MODEL).append('\n');
@@ -137,8 +211,13 @@ public class MainActivity extends Activity {
 
         dumpFrameworkShape(sb);
         sb.append('\n');
+
+        probeStaticNativeMethods(sb);
+        sb.append('\n');
+
         dumpCandidateResolution(sb);
         sb.append('\n');
+
         dumpPublicCameraKeys(sb);
 
         return sb.toString();
@@ -146,16 +225,25 @@ public class MainActivity extends Activity {
 
     private void dumpFrameworkShape(StringBuilder sb) {
         sb.append("============================================================\n");
-        sb.append("FRAMEWORK API / REFLECTION SHAPE\n");
+        sb.append("FRAMEWORK CLASS SHAPE\n");
         sb.append("============================================================\n");
 
-        inspectClass(sb, "android.hardware.camera2.impl.CameraMetadataNative");
-        inspectClass(sb, "android.hardware.camera2.impl.CameraMetadataNative$Key");
-        inspectClass(sb, "android.hardware.camera2.CaptureRequest$Key");
+        inspectClass(sb, NATIVE_CLASS);
+        inspectClass(sb, NATIVE_KEY_CLASS);
         inspectConstructors(sb, CaptureRequest.Key.class);
 
         try {
-            CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            Class<?> nativeKeyClass = Class.forName(NATIVE_KEY_CLASS);
+            inspectConstructors(sb, nativeKeyClass);
+        } catch (Throwable t) {
+            appendThrowable(sb, "Native Key constructor inspection failed: ", t);
+        }
+
+        /* Confirm the exact runtime classes used by a real public vendor key. */
+        try {
+            CameraManager manager =
+                    (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+
             if (manager == null) {
                 sb.append("CameraManager: null\n");
                 return;
@@ -163,175 +251,470 @@ public class MainActivity extends Activity {
 
             String[] ids = manager.getCameraIdList();
             if (ids == null || ids.length == 0) {
-                sb.append("No camera IDs\n");
+                sb.append("Camera IDs unavailable\n");
                 return;
             }
 
-            CameraCharacteristics c = manager.getCameraCharacteristics(ids[0]);
-            List<CaptureRequest.Key<?>> keys = c.getAvailableCaptureRequestKeys();
+            CameraCharacteristics c =
+                    manager.getCameraCharacteristics(ids[0]);
 
-            if (keys != null && !keys.isEmpty()) {
-                CaptureRequest.Key<?> sample = keys.get(0);
+            List<CaptureRequest.Key<?>> keys =
+                    c.getAvailableCaptureRequestKeys();
+
+            CaptureRequest.Key<?> sample = findKeyByName(
+                    keys,
+                    "com.lenovo.moto.clientapp.is_motcamera2"
+            );
+
+            if (sample == null && keys != null && !keys.isEmpty()) {
+                sample = keys.get(0);
+            }
+
+            if (sample != null) {
                 Object nativeKey = invokeNoArg(sample, "getNativeKey");
 
                 sb.append("Sample CaptureRequest.Key class: ")
-                        .append(sample.getClass().getName()).append('\n');
-                sb.append("Sample native key class: ")
-                        .append(nativeKey == null ? "<null>" : nativeKey.getClass().getName())
+                        .append(sample.getClass().getName())
+                        .append('\n');
+                sb.append("Sample native Key class: ")
+                        .append(nativeKey == null
+                                ? "<null>"
+                                : nativeKey.getClass().getName())
                         .append('\n');
 
                 if (nativeKey != null) {
-                    inspectObjectMethods(sb, nativeKey,
-                            "getTag", "getType", "getTypeReference", "getVendorId", "hasTag");
-                    inspectObjectFields(sb, nativeKey,
-                            "mTag", "mHasTag", "mVendorId", "mType", "mTypeReference", "mName");
+                    inspectObjectMethods(
+                            sb,
+                            nativeKey,
+                            "getTag",
+                            "cacheTag",
+                            "getType",
+                            "getTypeReference",
+                            "getVendorId",
+                            "hasTag"
+                    );
+
+                    inspectObjectFields(
+                            sb,
+                            nativeKey,
+                            "mTag",
+                            "mHasTag",
+                            "mVendorId",
+                            "mType",
+                            "mTypeReference",
+                            "mName",
+                            "mFallbackName"
+                    );
                 }
             }
         } catch (Throwable t) {
-            appendThrowable(sb, "Sample key inspection failed: ", t);
+            appendThrowable(
+                    sb,
+                    "Runtime class inspection failed: ",
+                    t
+            );
+        }
+    }
+
+    private void probeStaticNativeMethods(StringBuilder sb) {
+        sb.append("============================================================\n");
+        sb.append("CAMERA METADATA NATIVE METHOD PROBE\n");
+        sb.append("============================================================\n");
+
+        Class<?> nativeClass;
+
+        try {
+            nativeClass = Class.forName(NATIVE_CLASS);
+        } catch (Throwable t) {
+            appendThrowable(sb, "CameraMetadataNative lookup failed: ", t);
+            return;
+        }
+
+        String controlName =
+                "com.lenovo.moto.clientapp.is_motcamera2";
+
+        /*
+         * Try both historical getTag signatures.
+         * If hidden API filtering hides the methods, this section records it.
+         */
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "getTag",
+                new Class<?>[] {String.class},
+                new Object[] {controlName},
+                "getTag(String) control test"
+        );
+
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "getTag",
+                new Class<?>[] {String.class, long.class},
+                new Object[] {controlName, Long.MAX_VALUE},
+                "getTag(String,long) control test"
+        );
+
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "getNativeType",
+                new Class<?>[] {int.class},
+                new Object[] {0x809a0000},
+                "getNativeType(int) control test"
+        );
+
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "getNativeType",
+                new Class<?>[] {int.class, long.class},
+                new Object[] {0x809a0000, Long.MAX_VALUE},
+                "getNativeType(int,long) control test"
+        );
+
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "setupGlobalVendorTagDescriptor",
+                new Class<?>[] {},
+                new Object[] {},
+                "setupGlobalVendorTagDescriptor()"
+        );
+
+        probeStaticMethod(
+                sb,
+                nativeClass,
+                "nativeSetupGlobalVendorTagDescriptor",
+                new Class<?>[] {},
+                new Object[] {},
+                "nativeSetupGlobalVendorTagDescriptor()"
+        );
+    }
+
+    private void probeStaticMethod(
+            StringBuilder sb,
+            Class<?> clazz,
+            String methodName,
+            Class<?>[] parameterTypes,
+            Object[] args,
+            String label
+    ) {
+        sb.append(label).append(": ");
+
+        Method method;
+
+        try {
+            method = clazz.getDeclaredMethod(
+                    methodName,
+                    parameterTypes
+            );
+        } catch (NoSuchMethodException e) {
+            try {
+                method = clazz.getMethod(
+                        methodName,
+                        parameterTypes
+                );
+            } catch (NoSuchMethodException e2) {
+                sb.append("NOT FOUND\n");
+                return;
+            } catch (Throwable t) {
+                sb.append("LOOKUP FAILED: ");
+                appendThrowable(sb, "", t);
+                return;
+            }
+        } catch (Throwable t) {
+            sb.append("LOOKUP FAILED: ");
+            appendThrowable(sb, "", t);
+            return;
+        }
+
+        sb.append("FOUND ")
+                .append(methodSignature(method))
+                .append("\n");
+
+        try {
+            method.setAccessible(true);
+
+            Object value = method.invoke(null, args);
+
+            sb.append("  result: ")
+                    .append(valueDescription(value))
+                    .append('\n');
+
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            sb.append("  invocation failed: ");
+            appendThrowable(
+                    sb,
+                    "",
+                    cause != null ? cause : e
+            );
+
+        } catch (Throwable t) {
+            sb.append("  invocation failed: ");
+            appendThrowable(sb, "", t);
         }
     }
 
     private void dumpCandidateResolution(StringBuilder sb) {
         sb.append("============================================================\n");
-        sb.append("CANDIDATE NAME -> TAG RESOLUTION\n");
+        sb.append("CANDIDATE / CACHE-TAG RESOLUTION\n");
         sb.append("============================================================\n");
-        sb.append("Purpose: determine whether the Motorola vendor-tag registry can resolve\n");
-        sb.append("the hidden names already established by the earlier HAL/vendor dump.\n");
-        sb.append("A successful resolution is not yet proof that a key is accepted by\n");
-        sb.append("the Camera2 request whitelist; it only proves name->tag resolution.\n\n");
+        sb.append("The first candidate is a known public Lenovo vendor key and is\n");
+        sb.append("used as a control. Hidden candidates are tested with the exact\n");
+        sb.append("same CaptureRequest.Key(String, Class) construction path.\n");
+        sb.append("Then cacheTag(expectedTag) is attempted on the native key.\n");
+        sb.append("A successful cacheTag test proves Java can manufacture a request\n");
+        sb.append("key with the HAL tag even when name->tag lookup is unavailable.\n\n");
 
         for (Candidate candidate : CANDIDATES) {
             probeCandidate(sb, candidate);
         }
     }
 
-    private void probeCandidate(StringBuilder sb, Candidate candidate) {
+    private void probeCandidate(
+            StringBuilder sb,
+            Candidate candidate
+    ) {
         sb.append("------------------------------------------------------------\n");
         sb.append(candidate.name).append('\n');
         sb.append("Expected Java type: ")
-                .append(candidate.type.getName()).append('\n');
+                .append(candidate.type.getName())
+                .append('\n');
+        sb.append("Expected HAL tag: ")
+                .append(hex(candidate.expectedTag))
+                .append('\n');
 
-        if (candidate.expectedTag != null) {
-            sb.append("Expected HAL tag: ")
-                    .append(hex(candidate.expectedTag)).append('\n');
-        } else {
-            sb.append("Expected HAL tag: <not established>\n");
+        CaptureRequest.Key<?> requestKey;
+
+        try {
+            Constructor<CaptureRequest.Key> constructor =
+                    CaptureRequest.Key.class.getConstructor(
+                            String.class,
+                            Class.class
+                    );
+
+            requestKey = constructor.newInstance(
+                    candidate.name,
+                    candidate.type
+            );
+
+            sb.append("2-arg CaptureRequest.Key constructor: SUCCESS\n");
+
+        } catch (Throwable t) {
+            sb.append("2-arg CaptureRequest.Key constructor: FAILED\n");
+            appendThrowable(sb, "  ", t);
+            return;
         }
 
-        boolean anySuccess = false;
+        Object nativeKey =
+                invokeNoArg(requestKey, "getNativeKey");
 
-        /*
-         * Strategy A: hidden/vendor constructor (String, Class, long).
-         * This is the framework path used by AOSP vendor extensions.
-         */
-        anySuccess |= tryConstructAndResolve(
+        if (nativeKey == null) {
+            sb.append("nativeKey: <null>\n");
+            return;
+        }
+
+        sb.append("nativeKey class: ")
+                .append(nativeKey.getClass().getName())
+                .append('\n');
+
+        Object before =
+                invokeNoArg(nativeKey, "getTag");
+
+        sb.append("getTag() before cache: ")
+                .append(formatTag(before))
+                .append('\n');
+
+        Object vendorId =
+                invokeNoArg(nativeKey, "getVendorId");
+
+        sb.append("getVendorId(): ")
+                .append(valueDescription(vendorId))
+                .append('\n');
+
+        Object hasTag =
+                invokeNoArg(nativeKey, "hasTag");
+
+        sb.append("hasTag() before cache: ")
+                .append(valueDescription(hasTag))
+                .append('\n');
+
+        /* Direct static registry lookup, if this firmware exposes it. */
+        probeCandidateStaticLookup(
                 sb,
-                candidate,
-                new Class<?>[] {String.class, Class.class, long.class},
-                new Object[] {candidate.name, candidate.type, Long.MAX_VALUE},
-                "3-arg constructor, vendorId=Long.MAX_VALUE"
+                candidate
         );
 
-        /*
-         * Some older Qualcomm/Android camera stacks use the 2-arg Key
-         * constructor with the default vendor-id behavior.
-         */
-        anySuccess |= tryConstructAndResolve(
-                sb,
-                candidate,
-                new Class<?>[] {String.class, Class.class},
-                new Object[] {candidate.name, candidate.type},
-                "2-arg constructor"
-        );
+        /* This is the new critical test. */
+        boolean cacheSuccess =
+                invokeCacheTag(
+                        sb,
+                        nativeKey,
+                        candidate.expectedTag
+                );
 
-        /*
-         * Try vendorId=0 as a diagnostic. This is not assumed to be the
-         * device's actual provider ID; it simply checks whether this fork
-         * uses a zero provider ID for its registry.
-         */
-        anySuccess |= tryConstructAndResolve(
-                sb,
-                candidate,
-                new Class<?>[] {String.class, Class.class, long.class},
-                new Object[] {candidate.name, candidate.type, 0L},
-                "3-arg constructor, vendorId=0"
-        );
+        if (!cacheSuccess) {
+            sb.append(
+                    "RESULT: cacheTag() unavailable or blocked.\n"
+            );
+            return;
+        }
 
-        if (!anySuccess) {
-            sb.append("RESULT: no candidate form resolved a numeric tag.\n");
+        Object after =
+                invokeNoArg(nativeKey, "getTag");
+
+        sb.append("getTag() after cache: ")
+                .append(formatTag(after))
+                .append('\n');
+
+        Object hasTagAfter =
+                invokeNoArg(nativeKey, "hasTag");
+
+        sb.append("hasTag() after cache: ")
+                .append(valueDescription(hasTagAfter))
+                .append('\n');
+
+        if (after instanceof Integer
+                && ((Integer) after) == candidate.expectedTag) {
+            sb.append(
+                    "RESULT: MANUAL TAG CACHE SUCCESS\n"
+            );
+        } else {
+            sb.append(
+                    "RESULT: cacheTag invoked but tag verification failed\n"
+            );
         }
     }
 
-    private boolean tryConstructAndResolve(
+    private void probeCandidateStaticLookup(
             StringBuilder sb,
-            Candidate candidate,
-            Class<?>[] parameterTypes,
-            Object[] args,
-            String label
+            Candidate candidate
     ) {
-        Constructor<?> constructor = null;
-
         try {
-            constructor = CaptureRequest.Key.class.getDeclaredConstructor(parameterTypes);
-        } catch (Throwable ignored) {
-            try {
-                constructor = CaptureRequest.Key.class.getConstructor(parameterTypes);
-            } catch (Throwable ignoredAgain) {
-                sb.append(label).append(": constructor NOT FOUND\n");
-                return false;
+            Class<?> nativeClass =
+                    Class.forName(NATIVE_CLASS);
+
+            Method oneArg = findDeclaredOrPublicMethod(
+                    nativeClass,
+                    "getTag",
+                    String.class
+            );
+
+            if (oneArg != null) {
+                oneArg.setAccessible(true);
+
+                try {
+                    Object value = oneArg.invoke(
+                            null,
+                            candidate.name
+                    );
+
+                    sb.append("static getTag(String): ")
+                            .append(formatTag(value))
+                            .append('\n');
+
+                } catch (InvocationTargetException e) {
+                    Throwable cause = e.getCause();
+                    sb.append("static getTag(String): exception ");
+                    appendThrowable(
+                            sb,
+                            "",
+                            cause != null ? cause : e
+                    );
+                }
+            } else {
+                sb.append(
+                        "static getTag(String): NOT FOUND\n"
+                );
             }
+
+            Method twoArg = findDeclaredOrPublicMethod(
+                    nativeClass,
+                    "getTag",
+                    String.class,
+                    long.class
+            );
+
+            if (twoArg != null) {
+                twoArg.setAccessible(true);
+
+                try {
+                    Object value = twoArg.invoke(
+                            null,
+                            candidate.name,
+                            Long.MAX_VALUE
+                    );
+
+                    sb.append("static getTag(String,long): ")
+                            .append(formatTag(value))
+                            .append('\n');
+
+                } catch (InvocationTargetException e) {
+                    Throwable cause = e.getCause();
+                    sb.append(
+                            "static getTag(String,long): exception "
+                    );
+                    appendThrowable(
+                            sb,
+                            "",
+                            cause != null ? cause : e
+                    );
+                }
+            } else {
+                sb.append(
+                        "static getTag(String,long): NOT FOUND\n"
+                );
+            }
+
+        } catch (Throwable t) {
+            appendThrowable(
+                    sb,
+                    "Static candidate lookup failed: ",
+                    t
+            );
+        }
+    }
+
+    private boolean invokeCacheTag(
+            StringBuilder sb,
+            Object nativeKey,
+            int tag
+    ) {
+        Method method =
+                findDeclaredOrPublicMethod(
+                        nativeKey.getClass(),
+                        "cacheTag",
+                        int.class
+                );
+
+        if (method == null) {
+            sb.append("cacheTag(int): NOT FOUND\n");
+            return false;
         }
 
+        sb.append("cacheTag(int): FOUND ")
+                .append(methodSignature(method))
+                .append('\n');
+
         try {
-            constructor.setAccessible(true);
-            Object key = constructor.newInstance(args);
-
-            Object nativeKey = invokeNoArg(key, "getNativeKey");
-            if (nativeKey == null) {
-                sb.append(label).append(": constructed, nativeKey=<null>\n");
-                return false;
-            }
-
-            Object tagObject = invokeNoArg(nativeKey, "getTag");
-            if (!(tagObject instanceof Integer)) {
-                sb.append(label).append(": constructed, getTag() returned ")
-                        .append(valueDescription(tagObject)).append('\n');
-                return false;
-            }
-
-            int tag = (Integer) tagObject;
-
-            sb.append(label)
-                    .append(": SUCCESS tag=")
-                    .append(hex(tag));
-
-            if (candidate.expectedTag != null) {
-                sb.append(" matchExpected=")
-                        .append(tag == candidate.expectedTag ? "YES" : "NO");
-            }
-
-            sb.append('\n');
-
-            /* Try to obtain type/vendor ID from the actual constructed key. */
-            Object resolvedType = invokeNoArg(nativeKey, "getType");
-            Object vendorId = invokeNoArg(nativeKey, "getVendorId");
-
-            sb.append("  resolved type: ")
-                    .append(valueDescription(resolvedType)).append('\n');
-            sb.append("  resolved vendorId: ")
-                    .append(valueDescription(vendorId)).append('\n');
-
+            method.setAccessible(true);
+            method.invoke(nativeKey, tag);
+            sb.append("cacheTag invocation: SUCCESS\n");
             return true;
-
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
-            sb.append(label).append(": invocation failed: ");
-            appendThrowable(sb, "", cause != null ? cause : e);
+            sb.append("cacheTag invocation: FAILED\n");
+            appendThrowable(
+                    sb,
+                    "  ",
+                    cause != null ? cause : e
+            );
             return false;
         } catch (Throwable t) {
-            sb.append(label).append(": failed: ");
-            appendThrowable(sb, "", t);
+            sb.append("cacheTag invocation: FAILED\n");
+            appendThrowable(sb, "  ", t);
             return false;
         }
     }
@@ -342,7 +725,9 @@ public class MainActivity extends Activity {
         sb.append("============================================================\n");
 
         try {
-            CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            CameraManager manager =
+                    (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+
             if (manager == null) {
                 sb.append("CameraManager: null\n");
                 return;
@@ -350,25 +735,39 @@ public class MainActivity extends Activity {
 
             List<String> ids = new ArrayList<>();
             String[] rawIds = manager.getCameraIdList();
+
             if (rawIds != null) {
                 Collections.addAll(ids, rawIds);
             }
 
             ids.sort((a, b) -> {
                 try {
-                    return Integer.compare(Integer.parseInt(a), Integer.parseInt(b));
+                    return Integer.compare(
+                            Integer.parseInt(a),
+                            Integer.parseInt(b)
+                    );
                 } catch (NumberFormatException e) {
                     return a.compareTo(b);
                 }
             });
 
-            sb.append("Camera IDs: ").append(ids).append('\n');
+            sb.append("Camera IDs: ")
+                    .append(ids)
+                    .append('\n');
 
             for (String id : ids) {
-                sb.append("\n-- CAMERA ").append(id).append(" --\n");
-                CameraCharacteristics c = manager.getCameraCharacteristics(id);
-                Integer facing = c.get(CameraCharacteristics.LENS_FACING);
-                Integer level = c.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+                sb.append("\n-- CAMERA ")
+                        .append(id)
+                        .append(" --\n");
+
+                CameraCharacteristics c =
+                        manager.getCameraCharacteristics(id);
+
+                Integer facing =
+                        c.get(CameraCharacteristics.LENS_FACING);
+
+                Integer level =
+                        c.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
 
                 sb.append("LensFacing: ")
                         .append(facingToString(facing))
@@ -376,88 +775,192 @@ public class MainActivity extends Activity {
                         .append(hardwareLevelToString(level))
                         .append('\n');
 
-                List<CaptureRequest.Key<?>> keys = c.getAvailableCaptureRequestKeys();
+                List<CaptureRequest.Key<?>> keys =
+                        c.getAvailableCaptureRequestKeys();
+
                 dumpKeys(keys, sb);
             }
+
         } catch (Throwable t) {
-            appendThrowable(sb, "Public key dump failed: ", t);
+            appendThrowable(
+                    sb,
+                    "Public key dump failed: ",
+                    t
+            );
         }
     }
 
-    private void dumpKeys(List<CaptureRequest.Key<?>> keys, StringBuilder sb) {
+    private void dumpKeys(
+            List<CaptureRequest.Key<?>> keys,
+            StringBuilder sb
+    ) {
         if (keys == null || keys.isEmpty()) {
             sb.append("<none>\n");
             return;
         }
 
-        List<CaptureRequest.Key<?>> copy = new ArrayList<>(keys);
-        copy.sort(Comparator.comparing(this::safeName));
+        List<CaptureRequest.Key<?>> copy =
+                new ArrayList<>(keys);
+
+        copy.sort(
+                Comparator.comparing(
+                        this::safeName
+                )
+        );
 
         for (CaptureRequest.Key<?> key : copy) {
-            Object nativeKey = invokeNoArg(key, "getNativeKey");
-            Object tag = nativeKey == null ? null : invokeNoArg(nativeKey, "getTag");
+            Object nativeKey =
+                    invokeNoArg(key, "getNativeKey");
 
-            sb.append(isVendor(safeName(key)) ? "[VENDOR] " : "[STD]   ")
+            Object tag =
+                    nativeKey == null
+                            ? null
+                            : invokeNoArg(nativeKey, "getTag");
+
+            sb.append(
+                    isVendor(safeName(key))
+                            ? "[VENDOR] "
+                            : "[STD]   "
+            )
                     .append(safeName(key))
                     .append("    tag=")
-                    .append(formatTagObject(tag))
+                    .append(formatTag(tag))
                     .append('\n');
         }
 
-        sb.append("Count: ").append(copy.size()).append('\n');
+        sb.append("Count: ")
+                .append(copy.size())
+                .append('\n');
     }
 
-    private void inspectClass(StringBuilder sb, String className) {
-        sb.append("Class: ").append(className).append('\n');
+    private CaptureRequest.Key<?> findKeyByName(
+            List<CaptureRequest.Key<?>> keys,
+            String name
+    ) {
+        if (keys == null) {
+            return null;
+        }
+
+        for (CaptureRequest.Key<?> key : keys) {
+            if (name.equals(safeName(key))) {
+                return key;
+            }
+        }
+
+        return null;
+    }
+
+    private void inspectClass(
+            StringBuilder sb,
+            String className
+    ) {
+        sb.append("Class: ")
+                .append(className)
+                .append('\n');
 
         try {
-            Class<?> clazz = Class.forName(className);
-            List<String> signatures = new ArrayList<>();
+            Class<?> clazz =
+                    Class.forName(className);
+
+            List<String> signatures =
+                    new ArrayList<>();
 
             Class<?> current = clazz;
+
             while (current != null) {
                 try {
-                    for (Method method : current.getDeclaredMethods()) {
-                        String n = method.getName().toLowerCase();
-                        if (n.contains("vendor") || n.contains("tag")
-                                || n.contains("type") || n.contains("metadata")
+                    for (Method method :
+                            current.getDeclaredMethods()) {
+
+                        String n =
+                                method.getName().toLowerCase();
+
+                        if (n.contains("vendor")
+                                || n.contains("tag")
+                                || n.contains("type")
+                                || n.contains("metadata")
                                 || n.contains("key")) {
-                            signatures.add(methodSignature(method));
+
+                            signatures.add(
+                                    methodSignature(method)
+                            );
                         }
                     }
                 } catch (Throwable ignored) {
+                    // Continue superclass inspection.
                 }
-                current = current.getSuperclass();
+
+                current =
+                        current.getSuperclass();
             }
 
-            Collections.sort(signatures);
-            for (String signature : new HashSet<>(signatures)) {
-                sb.append("  ").append(signature).append('\n');
+            Set<String> unique =
+                    new HashSet<>(signatures);
+
+            List<String> sorted =
+                    new ArrayList<>(unique);
+
+            Collections.sort(sorted);
+
+            for (String signature : sorted) {
+                sb.append("  ")
+                        .append(signature)
+                        .append('\n');
             }
+
         } catch (Throwable t) {
-            appendThrowable(sb, "  inspection failed: ", t);
+            appendThrowable(
+                    sb,
+                    "  inspection failed: ",
+                    t
+            );
         }
     }
 
-    private void inspectConstructors(StringBuilder sb, Class<?> clazz) {
-        sb.append("Constructors: ").append(clazz.getName()).append('\n');
+    private void inspectConstructors(
+            StringBuilder sb,
+            Class<?> clazz
+    ) {
+        sb.append("Constructors: ")
+                .append(clazz.getName())
+                .append('\n');
+
         try {
-            for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+            for (Constructor<?> constructor :
+                    clazz.getDeclaredConstructors()) {
+
                 sb.append("  ")
-                        .append(Modifier.toString(constructor.getModifiers()))
+                        .append(
+                                Modifier.toString(
+                                        constructor.getModifiers()
+                                )
+                        )
                         .append(' ')
                         .append(clazz.getSimpleName())
                         .append('(');
 
-                Class<?>[] params = constructor.getParameterTypes();
+                Class<?>[] params =
+                        constructor.getParameterTypes();
+
                 for (int i = 0; i < params.length; i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(params[i].getName());
+                    if (i > 0) {
+                        sb.append(", ");
+                    }
+
+                    sb.append(
+                            params[i].getName()
+                    );
                 }
+
                 sb.append(")\n");
             }
+
         } catch (Throwable t) {
-            appendThrowable(sb, "  constructor inspection failed: ", t);
+            appendThrowable(
+                    sb,
+                    "  constructor inspection failed: ",
+                    t
+            );
         }
     }
 
@@ -466,22 +969,38 @@ public class MainActivity extends Activity {
             Object object,
             String... wanted
     ) {
-        Set<String> wantedSet = new HashSet<>(Arrays.asList(wanted));
-        Set<String> seen = new HashSet<>();
+        Set<String> wantedSet =
+                new HashSet<>(Arrays.asList(wanted));
 
-        Class<?> current = object.getClass();
+        Set<String> seen =
+                new HashSet<>();
+
+        Class<?> current =
+                object.getClass();
+
         while (current != null) {
             try {
-                for (Method method : current.getDeclaredMethods()) {
-                    if (!wantedSet.contains(method.getName())) continue;
-                    String signature = methodSignature(method);
+                for (Method method :
+                        current.getDeclaredMethods()) {
+
+                    if (!wantedSet.contains(method.getName())) {
+                        continue;
+                    }
+
+                    String signature =
+                            methodSignature(method);
+
                     if (seen.add(signature)) {
-                        sb.append("  METHOD ").append(signature).append('\n');
+                        sb.append("  METHOD ")
+                                .append(signature)
+                                .append('\n');
                     }
                 }
             } catch (Throwable ignored) {
             }
-            current = current.getSuperclass();
+
+            current =
+                    current.getSuperclass();
         }
     }
 
@@ -490,53 +1009,100 @@ public class MainActivity extends Activity {
             Object object,
             String... wanted
     ) {
-        Set<String> wantedSet = new HashSet<>(Arrays.asList(wanted));
-        Set<String> seen = new HashSet<>();
+        Set<String> wantedSet =
+                new HashSet<>(Arrays.asList(wanted));
 
-        Class<?> current = object.getClass();
+        Set<String> seen =
+                new HashSet<>();
+
+        Class<?> current =
+                object.getClass();
+
         while (current != null) {
             try {
-                for (Field field : current.getDeclaredFields()) {
-                    if (!wantedSet.contains(field.getName())) continue;
-                    String descriptor = Modifier.toString(field.getModifiers())
-                            + " " + field.getType().getName()
-                            + " " + field.getName();
+                for (Field field :
+                        current.getDeclaredFields()) {
+
+                    if (!wantedSet.contains(field.getName())) {
+                        continue;
+                    }
+
+                    String descriptor =
+                            Modifier.toString(field.getModifiers())
+                                    + " "
+                                    + field.getType().getName()
+                                    + " "
+                                    + field.getName();
+
                     if (seen.add(descriptor)) {
-                        sb.append("  FIELD ").append(descriptor).append('\n');
+                        sb.append("  FIELD ")
+                                .append(descriptor)
+                                .append('\n');
                     }
                 }
             } catch (Throwable ignored) {
             }
-            current = current.getSuperclass();
+
+            current =
+                    current.getSuperclass();
         }
     }
 
-    private String methodSignature(Method method) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(Modifier.toString(method.getModifiers()))
-                .append(' ')
-                .append(method.getReturnType().getName())
-                .append(' ')
-                .append(method.getDeclaringClass().getName())
-                .append('.')
-                .append(method.getName())
-                .append('(');
+    private Method findDeclaredOrPublicMethod(
+            Class<?> clazz,
+            String name,
+            Class<?>... params
+    ) {
+        Class<?> current = clazz;
 
-        Class<?>[] params = method.getParameterTypes();
-        for (int i = 0; i < params.length; i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(params[i].getName());
+        while (current != null) {
+            try {
+                Method method =
+                        current.getDeclaredMethod(
+                                name,
+                                params
+                        );
+
+                if (method != null) {
+                    return method;
+                }
+            } catch (NoSuchMethodException ignored) {
+                // Try superclass.
+            } catch (Throwable ignored) {
+                return null;
+            }
+
+            current =
+                    current.getSuperclass();
         }
 
-        sb.append(')');
-        return sb.toString();
+        try {
+            return clazz.getMethod(
+                    name,
+                    params
+            );
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
-    private Object invokeNoArg(Object target, String methodName) {
-        if (target == null) return null;
+    private Object invokeNoArg(
+            Object target,
+            String methodName
+    ) {
+        if (target == null) {
+            return null;
+        }
 
-        Method method = findMethod(target.getClass(), methodName);
-        if (method == null) return null;
+        Method method =
+                findDeclaredOrPublicMethod(
+                        target.getClass(),
+                        methodName
+                );
+
+        if (method == null) {
+            return null;
+        }
 
         try {
             method.setAccessible(true);
@@ -546,37 +1112,13 @@ public class MainActivity extends Activity {
         }
     }
 
-    private Method findMethod(Class<?> startClass, String name) {
-        Class<?> current = startClass;
-
-        while (current != null) {
-            try {
-                for (Method method : current.getDeclaredMethods()) {
-                    if (name.equals(method.getName())
-                            && method.getParameterTypes().length == 0) {
-                        return method;
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-            current = current.getSuperclass();
+    private String safeName(
+            CaptureRequest.Key<?> key
+    ) {
+        if (key == null) {
+            return "<null>";
         }
 
-        try {
-            for (Method method : startClass.getMethods()) {
-                if (name.equals(method.getName())
-                        && method.getParameterTypes().length == 0) {
-                    return method;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return null;
-    }
-
-    private String safeName(CaptureRequest.Key<?> key) {
-        if (key == null) return "<null>";
         try {
             return key.getName();
         } catch (Throwable t) {
@@ -584,68 +1126,179 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean isVendor(String name) {
+    private boolean isVendor(
+            String name
+    ) {
         return name != null
                 && !name.startsWith("android.")
                 && !name.startsWith("com.android.");
     }
 
-    private String formatTagObject(Object value) {
+    private String formatTag(Object value) {
         if (value instanceof Integer) {
             return hex((Integer) value);
         }
+
+        if (value instanceof Long) {
+            return String.format(
+                    "0x%016x",
+                    (Long) value
+            );
+        }
+
         return valueDescription(value);
     }
 
     private String valueDescription(Object value) {
-        if (value == null) return "<null>";
-        if (value instanceof Class<?>) return ((Class<?>) value).getName();
+        if (value == null) {
+            return "<null>";
+        }
+
+        if (value instanceof Class<?>) {
+            return ((Class<?>) value).getName();
+        }
+
         return String.valueOf(value);
     }
 
-    private String hex(int value) {
-        return String.format("0x%08x", value);
+    private String methodSignature(Method method) {
+        StringBuilder sb =
+                new StringBuilder();
+
+        sb.append(
+                Modifier.toString(
+                        method.getModifiers()
+                )
+        )
+                .append(' ')
+                .append(
+                        method.getReturnType().getName()
+                )
+                .append(' ')
+                .append(
+                        method.getDeclaringClass().getName()
+                )
+                .append('.')
+                .append(method.getName())
+                .append('(');
+
+        Class<?>[] params =
+                method.getParameterTypes();
+
+        for (int i = 0; i < params.length; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+
+            sb.append(params[i].getName());
+        }
+
+        sb.append(')');
+        return sb.toString();
     }
 
-    private File saveReport(String report) throws Exception {
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
-        if (dir == null) dir = getFilesDir();
+    private String hex(int value) {
+        return String.format(
+                "0x%08x",
+                value
+        );
+    }
+
+    private File saveReport(
+            String report
+    ) throws Exception {
+        File dir =
+                getExternalFilesDir(
+                        Environment.DIRECTORY_DOCUMENTS
+                );
+
+        if (dir == null) {
+            dir = getFilesDir();
+        }
 
         if (!dir.exists() && !dir.mkdirs()) {
-            throw new IllegalStateException("Unable to create report directory");
+            throw new IllegalStateException(
+                    "Unable to create report directory"
+            );
         }
 
-        File file = new File(dir, "Camera2VendorKeyDump.txt");
-        try (FileOutputStream out = new FileOutputStream(file, false)) {
-            out.write(report.getBytes(StandardCharsets.UTF_8));
+        File file =
+                new File(
+                        dir,
+                        "Camera2VendorKeyDump.txt"
+                );
+
+        try (FileOutputStream out =
+                     new FileOutputStream(
+                             file,
+                             false
+                     )) {
+
+            out.write(
+                    report.getBytes(
+                            StandardCharsets.UTF_8
+                    )
+            );
         }
+
         return file;
     }
 
     private void shareReport() {
-        if (lastReport == null || lastReport.isEmpty()) {
-            statusText.setText("Run Probe first.");
+        if (lastReport == null
+                || lastReport.isEmpty()) {
+
+            statusText.setText(
+                    "Run Probe first."
+            );
             return;
         }
 
-        Intent intent = new Intent(Intent.ACTION_SEND);
+        Intent intent =
+                new Intent(Intent.ACTION_SEND);
+
         intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_SUBJECT,
-                "Edge20Pro Camera2 Vendor Registry Probe");
-        intent.putExtra(Intent.EXTRA_TEXT, lastReport);
-        startActivity(Intent.createChooser(intent, "Share Camera2 probe report"));
+        intent.putExtra(
+                Intent.EXTRA_SUBJECT,
+                "Edge20Pro Camera2 Vendor Cache/Tag Probe"
+        );
+        intent.putExtra(
+                Intent.EXTRA_TEXT,
+                lastReport
+        );
+
+        startActivity(
+                Intent.createChooser(
+                        intent,
+                        "Share Camera2 probe report"
+                )
+        );
     }
 
     private String facingToString(Integer value) {
-        if (value == null) return "UNKNOWN";
-        if (value == CameraCharacteristics.LENS_FACING_BACK) return "BACK";
-        if (value == CameraCharacteristics.LENS_FACING_FRONT) return "FRONT";
-        if (value == CameraCharacteristics.LENS_FACING_EXTERNAL) return "EXTERNAL";
+        if (value == null) {
+            return "UNKNOWN";
+        }
+
+        if (value == CameraCharacteristics.LENS_FACING_BACK) {
+            return "BACK";
+        }
+
+        if (value == CameraCharacteristics.LENS_FACING_FRONT) {
+            return "FRONT";
+        }
+
+        if (value == CameraCharacteristics.LENS_FACING_EXTERNAL) {
+            return "EXTERNAL";
+        }
+
         return "UNKNOWN";
     }
 
     private String hardwareLevelToString(Integer value) {
-        if (value == null) return "UNKNOWN";
+        if (value == null) {
+            return "UNKNOWN";
+        }
 
         switch (value) {
             case CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED:
@@ -669,7 +1322,8 @@ public class MainActivity extends Activity {
             Throwable throwable
     ) {
         if (throwable == null) {
-            sb.append(prefix).append("<null throwable>\n");
+            sb.append(prefix)
+                    .append("<null throwable>\n");
             return;
         }
 
@@ -680,18 +1334,29 @@ public class MainActivity extends Activity {
                 .append('\n');
 
         Throwable cause = throwable.getCause();
+
         if (cause != null && cause != throwable) {
-            sb.append(prefix).append("cause: ");
-            appendThrowable(sb, "", cause);
+            sb.append(prefix)
+                    .append("cause: ");
+
+            appendThrowable(
+                    sb,
+                    "",
+                    cause
+            );
         }
     }
 
     private static final class Candidate {
         final String name;
         final Class<?> type;
-        final Integer expectedTag;
+        final int expectedTag;
 
-        Candidate(String name, Class<?> type, Integer expectedTag) {
+        Candidate(
+                String name,
+                Class<?> type,
+                int expectedTag
+        ) {
             this.name = name;
             this.type = type;
             this.expectedTag = expectedTag;
