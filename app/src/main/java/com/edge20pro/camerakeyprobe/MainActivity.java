@@ -108,7 +108,7 @@ public class MainActivity extends Activity {
             sb.append("Capabilities: ").append(arrayToString(caps)).append("\n");
 
             if (Build.VERSION.SDK_INT >= 28) {
-                Set<String> physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_IDS);
+                Set<String> physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_CAMERA_IDS);
                 if (physicalIds != null) {
                     sb.append("Physical IDs: ").append(physicalIds).append("\n");
                 }
@@ -192,14 +192,32 @@ public class MainActivity extends Activity {
         catch (Exception e) { return "<name-error>"; }
     }
 
-    private String safeType(CaptureRequest.Key<?> key) {
-        try {
-            Class<?> type = key.getType();
-            return type == null ? "<null>" : type.getName();
-        } catch (Exception e) {
-            return "<type-error>";
+private String safeType(CaptureRequest.Key<?> key) {
+    try {
+        // 1. 通过反射获取公开类或父类中的 mKey 私有成员变量 (android.hardware.camera2.impl.CameraMetadataNative.Key)
+        Field mKeyField = key.getClass().getDeclaredField("mKey");
+        mKeyField.setAccessible(true);
+        Object nativeKey = mKeyField.get(key);
+
+        if (nativeKey != null) {
+            // 2. 从 nativeKey 中获取真正的 Type 或 Class 属性
+            Field typeField = nativeKey.getClass().getDeclaredField("mType");
+            typeField.setAccessible(true);
+            Object type = typeField.get(nativeKey);
+
+            if (type instanceof Class<?>) {
+                return ((Class<?>) type).getName();
+            } else if (type != null) {
+                return type.toString(); // 处理 ParameterizedType (如 Generic 泛型类型)
+            }
         }
+    } catch (Exception ignored) {
+        // 部分 Android 版本或厂商 SDK 结构不同，退回备用逻辑
     }
+
+    // 3. 备用方案：如果反射失败，尝试解析 getName() 结尾或标注未知
+    return "<unknown-type>";
+}
 
     private File saveReport(String report) throws Exception {
         File dir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
