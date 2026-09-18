@@ -109,10 +109,9 @@ public class MainActivity extends Activity {
             sb.append("Capabilities: ").append(arrayToString(caps)).append("\n");
 
             if (Build.VERSION.SDK_INT >= 28) {
-                Set<String> physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_IDS);
-                if (physicalIds != null) {
+                Set<String> physicalIds = c.getPhysicalCameraIds();
+                if (physicalIds != null && !physicalIds.isEmpty()) {
                     sb.append("Physical IDs: ").append(physicalIds).append("\n");
-                }
             }
 
             dumpRequestKeys(c, sb);
