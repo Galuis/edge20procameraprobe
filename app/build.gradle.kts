@@ -12,16 +12,17 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-        externalNativeBuild {
-            cmake {
-                cppFlags "-std=c++17 -Wall -Wextra -Wpedantic"
-            }
-        }
 
         externalNativeBuild {
             cmake {
-                path file("src/main/cpp/CMakeLists.txt")
+                cppFlags += listOf("-std=c++17", "-Wall", "-Wextra", "-Wpedantic")
             }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
         }
     }
 }
