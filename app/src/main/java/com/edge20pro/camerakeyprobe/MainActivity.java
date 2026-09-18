@@ -15,6 +15,7 @@ import android.widget.TextView;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,7 +109,7 @@ public class MainActivity extends Activity {
             sb.append("Capabilities: ").append(arrayToString(caps)).append("\n");
 
             if (Build.VERSION.SDK_INT >= 28) {
-                Set<String> physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_CAMERA_IDS);
+                Set<String> physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_IDS);
                 if (physicalIds != null) {
                     sb.append("Physical IDs: ").append(physicalIds).append("\n");
                 }
