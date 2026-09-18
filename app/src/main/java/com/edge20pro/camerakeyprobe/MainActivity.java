@@ -112,6 +112,7 @@ public class MainActivity extends Activity {
                 Set<String> physicalIds = c.getPhysicalCameraIds();
                 if (physicalIds != null && !physicalIds.isEmpty()) {
                     sb.append("Physical IDs: ").append(physicalIds).append("\n");
+                }
             }
 
             dumpRequestKeys(c, sb);
