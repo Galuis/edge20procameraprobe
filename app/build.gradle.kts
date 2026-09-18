@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId = "com.edge20pro.camerakeyprobe"
-        minSdk = 23
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
