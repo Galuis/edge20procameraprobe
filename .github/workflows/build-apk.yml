@@ -46,6 +46,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Verify NDK and CMake
+        shell: bash
+        run: |
+          echo "Installed NDKs:"
+          ls -la "$ANDROID_HOME/ndk"
+          echo "Installed CMake:"
+          ls -la "$ANDROID_HOME/cmake"
+          echo "Selected NDK:"
+          "$ANDROID_HOME/ndk/27.2.12479018/ndk-build" --version
+          echo "Selected CMake:"
+          "$ANDROID_HOME/cmake/3.22.1/bin/cmake" --version
+
       - name: Build debug APK
         shell: bash
         run: |
