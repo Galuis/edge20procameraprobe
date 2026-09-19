@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define LOG_TAG "Edge20ProVendorProbeV4"
+#define LOG_TAG "Edge20ProVendorProbeV5"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -117,7 +117,7 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
             return env->NewStringUTF(report.str().c_str());
         }
 
-        report << "NDK API: ACameraMetadata_getTagFromName\n";
+        report << "NDK API: known vendor-tag ID presence probe\n";
         report << "Camera count: " << cameraIds.size() << "\n";
         report << "Candidate count: " << candidateNames.size() << "\n\n";
 
@@ -161,71 +161,45 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
                    << " (" << static_cast<int>(allTagsStatus) << ")"
                    << " count=" << allTagCount << "\n\n";
 
-            int resolvedCount = 0;
+            int checkedCount = 0;
             int presentCount = 0;
-            int expectedMatchCount = 0;
+            int entryOkCount = 0;
 
             for (size_t i = 0; i < candidateNames.size(); ++i) {
                 const std::string& name = candidateNames[i];
                 const int32_t expected = expectedTags[i];
 
-                uint32_t resolvedTag = 0;
-                const camera_status_t resolveStatus =
-                        ACameraManager_getTagFromName(
-                                manager,
-                                cameraId.c_str(),
-                                name.c_str(),
-                                &resolvedTag
-                        );
-
                 report << "------------------------------------------------------------\n";
                 report << name << "\n";
-                report << "expectedTag=";
+
                 if (expected < 0) {
-                    report << "<not-established>\n";
-                } else {
-                    report << "0x" << std::hex << static_cast<uint32_t>(expected)
-                           << std::dec << "\n";
-                }
-
-                report << "getTagFromName: "
-                       << statusName(resolveStatus)
-                       << " (" << static_cast<int>(resolveStatus) << ")\n";
-
-                if (resolveStatus != ACAMERA_OK) {
-                    report << "resolvedTag=<none>\n";
+                    report << "expectedTag=<not-established>\n";
+                    report << "status=SKIPPED\n";
                     continue;
                 }
 
-                ++resolvedCount;
-                report << "resolvedTag=0x"
-                       << std::hex << resolvedTag << std::dec << "\n";
+                const uint32_t tag = static_cast<uint32_t>(expected);
+                ++checkedCount;
 
-                if (expected >= 0) {
-                    const bool matches =
-                            resolvedTag == static_cast<uint32_t>(expected);
-                    report << "expectedTagMatch="
-                           << (matches ? "YES" : "NO")
-                           << "\n";
-                    if (matches) ++expectedMatchCount;
-                } else {
-                    report << "expectedTagMatch=<not-established>\n";
-                }
+                report << "expectedTag=0x"
+                       << std::hex << tag << std::dec << "\n";
 
                 const bool inMetadata =
-                        tagPresent(allTags, allTagCount, resolvedTag);
+                        tagPresent(allTags, allTagCount, tag);
 
                 report << "tagPresentInCameraCharacteristics="
                        << (inMetadata ? "YES" : "NO")
                        << "\n";
 
-                if (inMetadata) ++presentCount;
+                if (inMetadata) {
+                    ++presentCount;
+                }
 
                 ACameraMetadata_const_entry entry{};
                 const camera_status_t entryStatus =
                         ACameraMetadata_getConstEntry(
                                 metadata,
-                                resolvedTag,
+                                tag,
                                 &entry);
 
                 report << "getConstEntry: "
@@ -233,17 +207,22 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
                        << " (" << static_cast<int>(entryStatus) << ")\n";
 
                 if (entryStatus == ACAMERA_OK) {
+                    ++entryOkCount;
+
                     report << "metadataType="
                            << typeName(entry.type)
                            << " (" << static_cast<int>(entry.type) << ")\n";
-                    report << "valueCount=" << entry.count << "\n";
+
+                    report << "valueCount="
+                           << entry.count
+                           << "\n";
                 }
             }
 
             report << "\nCAMERA SUMMARY\n";
-            report << "resolvedCount=" << resolvedCount << "\n";
+            report << "checkedCount=" << checkedCount << "\n";
             report << "presentCount=" << presentCount << "\n";
-            report << "expectedTagMatchCount=" << expectedMatchCount << "\n";
+            report << "entryOkCount=" << entryOkCount << "\n";
 
             ACameraMetadata_free(metadata);
             report << '\n';
