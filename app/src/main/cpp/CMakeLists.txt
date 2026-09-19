@@ -19,13 +19,13 @@ find_library(
 )
 
 target_compile_features(
-        edge20pro_vendor_probe_v4
+        edge20pro_vendor_probe_v6
         PRIVATE
         cxx_std_17
 )
 
 target_compile_options(
-        edge20pro_vendor_probe_v4
+        edge20pro_vendor_probe_v6
         PRIVATE
         -Wall
         -Wextra
@@ -33,7 +33,7 @@ target_compile_options(
 )
 
 target_link_libraries(
-        edge20pro_vendor_probe_v4
+        edge20pro_vendor_probe_v6
         ${camera2ndk-lib}
         ${log-lib}
 )
