@@ -172,7 +172,7 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
                 report << "------------------------------------------------------------\n";
                 report << name << "\n";
 
-                if (expected < 0) {
+                if (expected == -1) {
                     report << "expectedTag=<not-established>\n";
                     report << "status=SKIPPED\n";
                     continue;
