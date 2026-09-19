@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.22.1)
 
-project("edge20pro_vendor_probe_v4")
+project("edge20pro_vendor_probe_v6")
 
 add_library(
-        edge20pro_vendor_probe_v4
+        edge20pro_vendor_probe_v6
         SHARED
-        native_vendor_probe_v4.cpp
+        native_vendor_probe_v6.cpp
 )
 
 find_library(
