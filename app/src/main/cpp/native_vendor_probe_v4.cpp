@@ -171,10 +171,12 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
 
                 uint32_t resolvedTag = 0;
                 const camera_status_t resolveStatus =
-                        ACameraMetadata_getTagFromName(
-                                metadata,
+                        ACameraManager_getTagFromName(
+                                manager,
+                                cameraId.c_str(),
                                 name.c_str(),
-                                &resolvedTag);
+                                &resolvedTag
+                        );
 
                 report << "------------------------------------------------------------\n";
                 report << name << "\n";
