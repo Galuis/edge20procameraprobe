@@ -5,6 +5,7 @@ plugins {
 android {
     namespace = "com.edge20pro.camerakeyprobe"
     compileSdk = 35
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "com.edge20pro.camerakeyprobe"
@@ -23,6 +24,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 }
