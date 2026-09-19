@@ -1,25 +1,20 @@
 #include <jni.h>
 #include <camera/NdkCameraManager.h>
 #include <camera/NdkCameraMetadata.h>
+#include <camera/NdkCameraMetadataTags.h>
 #include <android/log.h>
 
+#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <sstream>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
-#define LOG_TAG "Edge20ProVendorProbeV6"
+#define LOG_TAG "Edge20ProVendorProbeV7"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace {
-
-struct Candidate {
-    std::string name;
-    int32_t expectedTag;
-};
 
 std::string statusName(camera_status_t status) {
     switch (status) {
@@ -45,14 +40,6 @@ const char* typeName(uint8_t type) {
         case ACAMERA_TYPE_RATIONAL: return "RATIONAL";
         default: return "UNKNOWN";
     }
-}
-
-bool tagPresent(const uint32_t* tags, int32_t count, uint32_t wanted) {
-    if (tags == nullptr || count <= 0) return false;
-    for (int32_t i = 0; i < count; ++i) {
-        if (tags[i] == wanted) return true;
-    }
-    return false;
 }
 
 std::vector<std::string> toStrings(JNIEnv* env, jobjectArray array) {
@@ -85,9 +72,126 @@ std::vector<int32_t> toInt32(JNIEnv* env, jintArray array) {
     out.resize(static_cast<size_t>(n));
 
     if (n > 0) {
-        env->GetIntArrayRegion(array, 0, n, reinterpret_cast<jint*>(out.data()));
+        env->GetIntArrayRegion(
+                array,
+                0,
+                n,
+                reinterpret_cast<jint*>(out.data()));
     }
     return out;
+}
+
+bool containsTag(const std::vector<int32_t>& tags, uint32_t wanted) {
+    const int32_t signedWanted = static_cast<int32_t>(wanted);
+    return std::find(tags.begin(), tags.end(), signedWanted) != tags.end();
+}
+
+int findTagIndex(const std::vector<int32_t>& tags, uint32_t wanted) {
+    const int32_t signedWanted = static_cast<int32_t>(wanted);
+    const auto it = std::find(tags.begin(), tags.end(), signedWanted);
+    if (it == tags.end()) return -1;
+    return static_cast<int>(std::distance(tags.begin(), it));
+}
+
+camera_status_t readInt32Array(
+        const ACameraMetadata* metadata,
+        uint32_t metadataTag,
+        std::vector<int32_t>* out,
+        uint8_t* outType,
+        uint32_t* outCount) {
+    out->clear();
+    if (outType != nullptr) *outType = 0;
+    if (outCount != nullptr) *outCount = 0;
+
+    ACameraMetadata_const_entry entry{};
+    const camera_status_t status =
+            ACameraMetadata_getConstEntry(metadata, metadataTag, &entry);
+
+    if (status != ACAMERA_OK) {
+        return status;
+    }
+
+    if (outType != nullptr) *outType = entry.type;
+    if (outCount != nullptr) *outCount = entry.count;
+
+    if (entry.type != ACAMERA_TYPE_INT32) {
+        return ACAMERA_ERROR_UNKNOWN;
+    }
+
+    if (entry.count > 0 && entry.data.i32 != nullptr) {
+        out->assign(entry.data.i32, entry.data.i32 + entry.count);
+    }
+
+    return ACAMERA_OK;
+}
+
+void reportAvailableKeyList(
+        std::ostringstream& report,
+        const ACameraMetadata* metadata,
+        uint32_t metadataTag,
+        const char* label,
+        const std::vector<std::string>& candidateNames,
+        const std::vector<int32_t>& expectedTags) {
+    std::vector<int32_t> keys;
+    uint8_t actualType = 0;
+    uint32_t actualCount = 0;
+
+    const camera_status_t status = readInt32Array(
+            metadata,
+            metadataTag,
+            &keys,
+            &actualType,
+            &actualCount);
+
+    report << "\n[" << label << "]\n";
+    report << "status=" << statusName(status)
+           << " (" << static_cast<int>(status) << ")\n";
+
+    if (status != ACAMERA_OK) {
+        if (actualType != 0) {
+            report << "metadataType="
+                   << typeName(actualType)
+                   << " (" << static_cast<int>(actualType) << ")\n";
+        }
+        if (actualCount != 0) {
+            report << "valueCount=" << actualCount << "\n";
+        }
+        return;
+    }
+
+    report << "metadataType="
+           << typeName(actualType)
+           << " (" << static_cast<int>(actualType) << ")\n";
+    report << "valueCount=" << actualCount << "\n";
+
+    int presentCount = 0;
+
+    for (size_t i = 0; i < candidateNames.size(); ++i) {
+        const std::string& name = candidateNames[i];
+        const int32_t expected = expectedTags[i];
+
+        report << "------------------------------------------------------------\n";
+        report << name << "\n";
+
+        if (expected == -1) {
+            report << "expectedTag=<not-established>\n";
+            report << "present=SKIPPED\n";
+            continue;
+        }
+
+        const uint32_t tag = static_cast<uint32_t>(expected);
+        const bool present = containsTag(keys, tag);
+        const int index = findTagIndex(keys, tag);
+
+        report << "expectedTag=0x"
+               << std::hex << tag << std::dec << "\n";
+        report << "present=" << (present ? "YES" : "NO") << "\n";
+        report << "index=" << index << "\n";
+
+        if (present) ++presentCount;
+    }
+
+    report << "presentCount=" << presentCount << "\n";
 }
 
 } // namespace
@@ -105,8 +209,10 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
 
     try {
         const std::vector<std::string> cameraIds = toStrings(env, cameraIdsArray);
-        const std::vector<std::string> candidateNames = toStrings(env, candidateNamesArray);
-        const std::vector<int32_t> expectedTags = toInt32(env, expectedTagsArray);
+        const std::vector<std::string> candidateNames =
+                toStrings(env, candidateNamesArray);
+        const std::vector<int32_t> expectedTags =
+                toInt32(env, expectedTagsArray);
 
         if (candidateNames.size() != expectedTags.size()) {
             report << "INVALID INPUT: candidateNames size="
@@ -117,7 +223,9 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
             return env->NewStringUTF(report.str().c_str());
         }
 
-        report << "NDK API: known vendor-tag ID presence probe\n";
+        report << "NDK API: AVAILABLE_*_KEYS probe\n";
+        report << "Purpose: determine whether known HAL vendor tag IDs are\n";
+        report << "listed as Camera2 request/result/session/physical-request keys.\n";
         report << "Camera count: " << cameraIds.size() << "\n";
         report << "Candidate count: " << candidateNames.size() << "\n\n";
 
@@ -159,73 +267,50 @@ Java_com_edge20pro_camerakeyprobe_MainActivity_nativeProbeVendorTags(
             report << "getAllTags: "
                    << statusName(allTagsStatus)
                    << " (" << static_cast<int>(allTagsStatus) << ")"
-                   << " count=" << allTagCount << "\n\n";
+                   << " count=" << allTagCount << "\n";
 
-            int checkedCount = 0;
-            int presentCount = 0;
-            int entryOkCount = 0;
+            reportAvailableKeyList(
+                    report,
+                    metadata,
+                    ACAMERA_REQUEST_AVAILABLE_REQUEST_KEYS,
+                    "AVAILABLE_REQUEST_KEYS",
+                    candidateNames,
+                    expectedTags);
 
-            for (size_t i = 0; i < candidateNames.size(); ++i) {
-                const std::string& name = candidateNames[i];
-                const int32_t expected = expectedTags[i];
+            reportAvailableKeyList(
+                    report,
+                    metadata,
+                    ACAMERA_REQUEST_AVAILABLE_SESSION_KEYS,
+                    "AVAILABLE_SESSION_KEYS",
+                    candidateNames,
+                    expectedTags);
 
-                report << "------------------------------------------------------------\n";
-                report << name << "\n";
+            reportAvailableKeyList(
+                    report,
+                    metadata,
+                    ACAMERA_REQUEST_AVAILABLE_RESULT_KEYS,
+                    "AVAILABLE_RESULT_KEYS",
+                    candidateNames,
+                    expectedTags);
 
-                if (expected == -1) {
-                    report << "expectedTag=<not-established>\n";
-                    report << "status=SKIPPED\n";
-                    continue;
-                }
+            reportAvailableKeyList(
+                    report,
+                    metadata,
+                    ACAMERA_REQUEST_AVAILABLE_CHARACTERISTICS_KEYS,
+                    "AVAILABLE_CHARACTERISTICS_KEYS",
+                    candidateNames,
+                    expectedTags);
 
-                const uint32_t tag = static_cast<uint32_t>(expected);
-                ++checkedCount;
-
-                report << "expectedTag=0x"
-                       << std::hex << tag << std::dec << "\n";
-
-                const bool inMetadata =
-                        tagPresent(allTags, allTagCount, tag);
-
-                report << "tagPresentInCameraCharacteristics="
-                       << (inMetadata ? "YES" : "NO")
-                       << "\n";
-
-                if (inMetadata) {
-                    ++presentCount;
-                }
-
-                ACameraMetadata_const_entry entry{};
-                const camera_status_t entryStatus =
-                        ACameraMetadata_getConstEntry(
-                                metadata,
-                                tag,
-                                &entry);
-
-                report << "getConstEntry: "
-                       << statusName(entryStatus)
-                       << " (" << static_cast<int>(entryStatus) << ")\n";
-
-                if (entryStatus == ACAMERA_OK) {
-                    ++entryOkCount;
-
-                    report << "metadataType="
-                           << typeName(entry.type)
-                           << " (" << static_cast<int>(entry.type) << ")\n";
-
-                    report << "valueCount="
-                           << entry.count
-                           << "\n";
-                }
-            }
-
-            report << "\nCAMERA SUMMARY\n";
-            report << "checkedCount=" << checkedCount << "\n";
-            report << "presentCount=" << presentCount << "\n";
-            report << "entryOkCount=" << entryOkCount << "\n";
+            reportAvailableKeyList(
+                    report,
+                    metadata,
+                    ACAMERA_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS,
+                    "AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS",
+                    candidateNames,
+                    expectedTags);
 
             ACameraMetadata_free(metadata);
-            report << '\n';
+            report << "\n";
         }
 
         ACameraManager_delete(manager);
